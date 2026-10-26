@@ -4,7 +4,7 @@
 - a durable, single-node key-value store speaking a subset of the Redis protocol (RESP).
 - acknowledged writes survive a process crash.
 - keys can expire (TTL).
-- runs core commands PING, ECHO, SET, GET, DEL and EXISTS.
+- runs core commands PING, ECHO, SET, GET, DEL, EXPIRE, TTL and EXISTS.
 - redis-cli compatibility.
 - TCP command server.
 - LSM tree storage engine.
@@ -21,33 +21,49 @@
 
 ## 2. Guarantees and failure model
 
+fsync policies offered: `always` / `everysec` / `os` 
+| Policy | Durability | Cost |
+|---|---|---|
+| always | synchronize each write, highest durability | slower writes |
+| everysec | periodically synchronize, once per sec, better performance | potential lost writes |
+| os | rely on os flushing | less predictable durability |
+
+
 | Failure | What is promised | Under which fsync policy |
 |---|---|---|
-| Process crash (`kill -9`) | TODO | TODO |
-| Power loss / OS crash | TODO | TODO |
-| Torn write (half-written record) | TODO | all |
-| Disk corruption (flipped bits) | TODO: detected? repaired? | all |
-| Disk full | TODO | all |
+| Process crash (`kill -9`) | an incomplete final record is ignored, recent writes remain | always |
+| Power loss / OS crash | completed syncs survive | always |
+| Torn write (half-written record) | detect incomplete final record and ignore it | always |
+| Disk corruption (flipped bits) | detect corrupted record and report it | always |
+| Disk full | return error and stop accepting | always |
 
-**Not handled:** TODO (list failures you explicitly do not defend against).
-
-fsync policies offered: `always` / `everysec` / `os` — describe the durability and cost of each.
+**Not handled:** 
+- Permanent disk/device failure
+- Automatic repair of corrupted records
+- Backups to another machine
+- Recovery from deleted or overwritten AOF files
 
 ---
 
 ## 3. Interface
 
-**Protocol:** RESP subset. TODO: list the RESP types you parse (simple string, error, integer, bulk string, array).
+**Protocol:** RESP subset
+RESP types parsed (simple string, error, integer, bulk string, array).
 
 | Command | Syntax | Reply | Errors |
 |---|---|---|---|
-| PING | TODO | TODO | TODO |
-| SET | TODO | TODO | TODO |
-| GET | TODO | TODO | TODO |
-| DEL | TODO | TODO | TODO |
-| EXPIRE / TTL | TODO | TODO | TODO |
+| PING | PING | +PONG\r\n | wrong number of arguments |
+| SET | SET key value | +OK\r\n | wrong number of arguments, invalid key/value |
+| GET | GET key | bulk string containing the value, or $-1\r\n if missing | wrong number of arguments, non existing key/invalid key type |
+| DEL | DEL key | int of number of keys deleted | wrong number of arguments |
+| EXPIRE | EXPIRE key seconds | int 1 if expiration is set, 0 if key doesn't exist | wrong number of arguments, out of range seconds |
+| TTL | TTL key | int of seconds remaining, -1 if no expiration, -2 if missing | wrong number of arguments |
+| EXISTS | EXISTS key [key...] | int of number of keys | wrong number of arguments |
+| ECHO | ECHO message | bulk string with the message | wrong number of arguments, size limit |
 
-**Limits:** max key size, max value size, max request size, max connections (TODO values; they double as security controls).
+
+**Limits:** 
+max key size: 1 KiB, max value size: 1 MiB, max request size: 2 MiB, max connections: 128.
 
 ---
 
@@ -117,9 +133,9 @@ TODO: list of live SSTables, updated atomically (write temp → fsync → rename
 
 ### 8.1 Assets and trust boundary
 - **Assets:** stored data (confidentiality, integrity), service availability, any configured password.
-- **Trust boundary:** TODO — default assumption: only trusted clients on localhost or a private network can connect.
+- **Trust boundary:** only trusted clients on localhost or a private network can connect.
 - **Attackers considered:** (a) unauthenticated network client, (b) authenticated but malicious client sending malformed or huge input, (c) another local user reading the data directory.
-- **Out of scope:** TODO e.g. physical access, a compromised OS, side-channel attacks, nation-state adversaries. Say it plainly.
+- **Out of scope:** physical access, a compromised OS, side-channel attacks, nation-state adversaries, hardware theft or destruction.
 
 ### 8.2 Controls, mapped to milestones
 
