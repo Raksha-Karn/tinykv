@@ -7,6 +7,7 @@
 - runs core commands PING, ECHO, SET, GET, DEL and EXISTS.
 - redis-cli compatibility.
 - TCP command server.
+- LSM tree storage engine.
 
 **Non-goals** 
 - no clustering or replication.
